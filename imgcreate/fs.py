@@ -410,7 +410,7 @@ class LoopbackMount:
         self.losetup = False
         self.ops = ops
         self.dirmode = dirmode
-        
+
     def cleanup(self):
         self.diskmount.cleanup()
 
@@ -427,21 +427,11 @@ class LoopbackMount:
         if self.losetup:
             return
 
-        losetupProc = subprocess.Popen(['losetup', '-f'],
-                                       stdout=subprocess.PIPE)
-        losetupOutput = losetupProc.communicate()[0]
-
-        if losetupProc.returncode:
-            raise MountError("Failed to allocate loop device for '%s'" %
-                             self.lofile)
-
-        self.loopdev = losetupOutput.split()[0]
-
-        args = ['losetup', self.loopdev, self.lofile]
+        args = ['losetup', '-f', self.lofile]
         if not ops:
             ops = self.ops
         if '-r' in ops or 'ro' in ops:
-            args += ['-r']
+            args.append('-r')
         if '--direct-io' in ops:
             args.insert(1, '--direct-io')
         rc = call(args)
@@ -449,6 +439,12 @@ class LoopbackMount:
             raise MountError("Failed to allocate loop device for '%s'" %
                              self.lofile)
 
+        p = subprocess.Popen(['losetup', '-j', self.lofile]
+                stdout=subprocess.PIPE)
+        self.loopdev = p.communicate()[0].split(':')[0]
+        if p.returncode:
+            raise MountError("Failed to allocate loop device for '%s'" %
+                             self.lofile)
         self.losetup = True
 
     def mount(self, ops='', dirmode=None):
@@ -746,7 +742,7 @@ class DiskMount(Mount):
             ops = self.ops
         if isinstance(ops, list) and ('-r' in ops or 'ro' in ops):
             args.extend(['-o', 'ro'])
-        elif ops: 
+        elif ops:
             args.extend(['-o', ops])
 
         rc = call(args)
@@ -819,7 +815,7 @@ class OverlayFSMount(Mount):
         rc = call(args)
         if rc != 0:
             raise MountError("OverlayFS mount:  '%s' failed" % args)
-        
+
         self.cowmnt.cleanup()
 
     def mount(self, name=None, ops='', dirmode=None):
@@ -871,7 +867,7 @@ class OverlayFSMount(Mount):
         if self.cowmnt:
             self.cowmnt.unmount()
         self.imgmnt.unmount()
- 
+
         self.mounted = False
 
     def cleanup(self):
@@ -945,7 +941,7 @@ class BindChrootMount():
                 logging.info("lazy umount succeeded on %s" % self.dest)
                 print("lazy umount succeeded on %s" % self.dest,
                       file=sys.stdout)
- 
+
         self.mounted = False
 
     def cleanup(self):
