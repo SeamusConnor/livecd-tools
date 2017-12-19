@@ -217,6 +217,11 @@ def losetup(ops=None, search=[]):
         args += [search]
     return rcall(args)[0].strip()
 
+def allocate_loopdev(fpath, extra_args=[]):
+    args = ['losetup'] + extra_args + ['-f', fpath]
+    rcall(args)
+    return rcall(['losetup', '-j', fpath])[0].split(':')[0]
+
 def get_blockdev(major_minor):
     """Return a block device node name from the devtmpfs."""
 
@@ -427,25 +432,18 @@ class LoopbackMount:
         if self.losetup:
             return
 
-        args = ['losetup', '-f', self.lofile]
+        args = []
         if not ops:
             ops = self.ops
+
         if '-r' in ops or 'ro' in ops:
             args.append('-r')
         if '--direct-io' in ops:
-            args.insert(1, '--direct-io')
-        rc = call(args)
-        if rc != 0:
-            raise MountError("Failed to allocate loop device for '%s'" %
-                             self.lofile)
+            args = ['--direct-io'] + args
 
-        p = subprocess.Popen(['losetup', '-j', self.lofile]
-                stdout=subprocess.PIPE)
-        self.loopdev = p.communicate()[0].split(':')[0]
-        if p.returncode:
-            raise MountError("Failed to allocate loop device for '%s'" %
-                             self.lofile)
+        self.loopdev = allocate_loopdev(self.lofile, args)
         self.losetup = True
+
 
     def mount(self, ops='', dirmode=None):
         self.diskmount.mount(ops, dirmode)
@@ -566,29 +564,17 @@ class LoopbackDisk(Disk):
         if self.device is not None:
             return
 
-        losetupProc = subprocess.Popen(['losetup', '-f'],
-                                       stdout=subprocess.PIPE)
-        losetupOutput = losetupProc.communicate()[0]
-
-        if losetupProc.returncode:
-            raise MountError("Failed to allocate loop device for '%s'" %
-                             self.lofile)
-
-        device = losetupOutput.split()[0].decode('utf-8')
-        args = ['losetup', device, self.lofile]
+        args = []
         if not ops:
             ops = self.ops
-        if '--direct-io' in ops:
-            args.insert(1, '--direct-io')
-        if '-r' in ops or 'ro' in ops:
-            args += ['-r']
 
-        logging.info("Losetup add %s mapping to %s"  % (device, self.lofile))
-        rc = call(args)
-        if rc != 0:
-            raise MountError("Failed to allocate loop device for '%s'" %
-                             self.lofile)
-        self.device = device
+        if '-r' in ops or 'ro' in ops:
+            args.append('-r')
+        if '--direct-io' in ops:
+            args = ['--direct-io'] + args
+
+        self.device = allocate_loopdev(self.lofile, args)
+        logging.info("Losetup add %s mapping to %s"  % (self.device, self.lofile))
 
     def cleanup(self):
         if self.device is None:
